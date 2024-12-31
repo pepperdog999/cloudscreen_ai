@@ -44,6 +44,10 @@ python main.py
     ]
 }
 ```
+- curl 示例：
+```bash
+curl -X POST http://localhost:8000/ocr -H "Content-Type: multipart/form-data" -F "file=@res/IMG_6790.jpeg"
+```
 
 ## 注意事项
 

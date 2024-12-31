@@ -26,20 +26,23 @@ class OCRProcessor:
         
         # 配置参数
         self.config = {
-            # OCR参数
-            'number_confidence': 0.2 if mode == 'handwritten' else 0.3,  # 降低数字的置信度阈值
-            'text_confidence': 0.1 if mode == 'handwritten' else 0.2,    # 降低文本的置信度阈值
+            # OCR参数 - 手写体使用更宽松的阈值
+            'number_confidence': 0.1 if mode == 'handwritten' else 0.3,  # 更低的数字置信度阈值
+            'text_confidence': 0.1 if mode == 'handwritten' else 0.2,    # 更低的文本置信度阈值
             
             # 图片预处理参数
-            'max_size': 1500 if mode == 'handwritten' else 1000,
-            'contrast_enhance': 1.5,
+            'max_size': 2000 if mode == 'handwritten' else 1000,  # 更高的分辨率
+            'contrast_enhance': 2.0 if mode == 'handwritten' else 1.5,  # 更强的对比度增强
             'preprocessing': {
                 'enable': True,
                 'denoise': True,
                 'threshold': True,
                 'deskew': True,
-                'kernel_size': 3,
-                'block_size': 11
+                'kernel_size': 2,      # 更小的核大小，保留更多细节
+                'block_size': 11,
+                'clahe': True,         # 启用自适应直方图均衡化
+                'sharpen': True,       # 启用锐化
+                'morphology': True     # 启用形态学操作
             }
         }
 
@@ -52,7 +55,7 @@ class OCRProcessor:
             processed_image = self.preprocess_image(image)
             
             print("开始OCR识别...")
-            # 使用EasyOCR进行识别
+            # 第一次尝试 - 原始图像
             results = self.reader.readtext(
                 processed_image,
                 detail=1,
@@ -60,6 +63,24 @@ class OCRProcessor:
                 contrast_ths=0.2,
                 adjust_contrast=0.8
             )
+            
+            # 如果识别结果不理想，尝试不同的预处理
+            if not results or len(results) < 2:
+                print("首次识别结果不理想，尝试其他预处理方法...")
+                
+                # 尝试反色图像
+                inverted_image = cv2.bitwise_not(processed_image)
+                results_inv = self.reader.readtext(
+                    inverted_image,
+                    detail=1,
+                    paragraph=False,
+                    contrast_ths=0.1,  # 降低对比度阈值
+                    adjust_contrast=1.5 # 增加对比度调整
+                )
+                
+                # 使用效果更好的结果
+                if len(results_inv) > len(results):
+                    results = results_inv
             
             if not results:
                 print("未识别到文本")
@@ -208,37 +229,51 @@ class OCRProcessor:
             if not self.config['preprocessing']['enable']:
                 return np.array(gray_image)
             
-            # 调整大小
-            ratio = min(self.config['max_size'] / image.width, 
-                       self.config['max_size'] / image.height)
+            # 调整大小，但保持较高分辨率
+            max_size = 2000 if self.mode == 'handwritten' else 1000  # 手写体使用更高分辨率
+            ratio = min(max_size / image.width, max_size / image.height)
             if ratio < 1:
                 new_size = (int(image.width * ratio), int(image.height * ratio))
                 gray_image = gray_image.resize(new_size, Image.Resampling.LANCZOS)
-                print(f"图片已调整大小至: {new_size}")
-            
-            # 增强对比度
-            enhanced_image = ImageEnhance.Contrast(gray_image).enhance(
-                self.config['contrast_enhance']
-            )
             
             # 转换为numpy数组
-            img_array = np.array(enhanced_image)
+            img_array = np.array(gray_image)
             
             if self.mode == 'handwritten':
+                # 自适应直方图均衡化
+                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+                img_array = clahe.apply(img_array)
+                
                 # 降噪
-                if self.config['preprocessing']['denoise']:
-                    img_array = cv2.fastNlMeansDenoising(img_array)
+                img_array = cv2.fastNlMeansDenoising(img_array, None, h=10, templateWindowSize=7, searchWindowSize=21)
+                
+                # 锐化
+                kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
+                img_array = cv2.filter2D(img_array, -1, kernel)
                 
                 # 自适应二值化
-                if self.config['preprocessing']['threshold']:
-                    img_array = cv2.adaptiveThreshold(
-                        img_array,
-                        255,
-                        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                        cv2.THRESH_BINARY,
-                        self.config['preprocessing']['block_size'],
-                        2
-                    )
+                img_array = cv2.adaptiveThreshold(
+                    img_array,
+                    255,
+                    cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                    cv2.THRESH_BINARY,
+                    11,  # 块大小
+                    2    # 常数
+                )
+                
+                # 形态学操作
+                kernel = np.ones((2,2), np.uint8)
+                img_array = cv2.morphologyEx(img_array, cv2.MORPH_CLOSE, kernel)  # 闭运算，连接断开的笔画
+                
+                # 倾斜校正
+                coords = np.column_stack(np.where(img_array > 0))
+                angle = cv2.minAreaRect(coords)[-1]
+                if angle < -45:
+                    angle = 90 + angle
+                (h, w) = img_array.shape[:2]
+                center = (w // 2, h // 2)
+                M = cv2.getRotationMatrix2D(center, angle, 1.0)
+                img_array = cv2.warpAffine(img_array, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
             
             return img_array
             
@@ -272,6 +307,37 @@ class OCRProcessor:
         except Exception as e:
             print(f"测试过程出错: {str(e)}")
             return None
+
+    def validate_and_correct_time(self, time_str):
+        """验证并修正时间格式"""
+        try:
+            # 常见错误修正
+            corrections = {
+                'l': '1',
+                'o': '0',
+                'O': '0',
+                'i': '1',
+                'I': '1',
+                'z': '2',
+                'Z': '2',
+                'S': '5',
+                'B': '8',
+            }
+            
+            for wrong, correct in corrections.items():
+                time_str = time_str.replace(wrong, correct)
+            
+            # 验证时间格式
+            if ':' not in time_str and '：' not in time_str:
+                # 处理无分隔符的情况
+                if len(time_str) == 3:
+                    time_str = f"{time_str[0]}:{time_str[1:3]}"
+                elif len(time_str) == 4:
+                    time_str = f"{time_str[:2]}:{time_str[2:]}"
+            
+            return time_str
+        except:
+            return time_str
 
 # 用于直接测试
 if __name__ == "__main__":
