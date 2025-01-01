@@ -17,12 +17,19 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 COPY main.py .
 COPY ocr.py .
+COPY download_models.py .
+
+# 创建模型目录
+RUN mkdir -p models/EasyOCR
+
+# 复制本地模型文件（如果有）
+COPY models/EasyOCR /app/models/EasyOCR
 
 # 安装 Python 依赖
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 创建模型目录
-RUN mkdir -p /root/.EasyOCR
+# 如果没有本地模型，则下载
+RUN if [ ! -d "/app/models/EasyOCR" ]; then python download_models.py; fi
 
 # 暴露端口
 EXPOSE 8000

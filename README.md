@@ -59,3 +59,30 @@ curl -X POST http://localhost:8000/ocr -H "Content-Type: multipart/form-data" -F
 2. 性能说明：
    - 首次启动时需要下载模型文件
    - 单次识别时间约 1-3 秒
+
+## 准备工作
+
+1. 下载模型文件：
+```bash
+# 方式一：使用下载脚本
+python download_models.py
+
+# 方式二：手动下载并放置
+# 将以下文件放入 models/EasyOCR 目录：
+# - craft_mlt_25k.pth
+# - chinese_sim.pth
+# - english_g2.pth
+```
+
+2. 目录结构：
+```
+.
+├── models
+│   └── EasyOCR
+│       ├── craft_mlt_25k.pth
+│       ├── chinese_sim.pth
+│       └── english_g2.pth
+├── main.py
+├── ocr.py
+└── ...
+```

@@ -4,6 +4,7 @@ from PIL import Image, ImageEnhance
 import os
 import numpy as np
 import cv2
+from pathlib import Path
 
 class OCRProcessor:
     def __init__(self, mode='auto'):
@@ -13,13 +14,19 @@ class OCRProcessor:
             mode: 'auto', 'printed' 或 'handwritten'
         """
         self.mode = mode
-        print("正在初始化EasyOCR，首次运行需要下载模型，请稍候...")
+        print("正在初始化EasyOCR...")
         
-        # 初始化 EasyOCR
+        # 设置模型目录
+        model_dir = Path('./models/EasyOCR')
+        if not model_dir.exists():
+            raise Exception("模型目录不存在，请先运行 download_models.py 下载模型文件")
+        
+        # 初始化 EasyOCR，使用本地模型
         self.reader = easyocr.Reader(
             ['ch_sim', 'en'],
             gpu=False,
-            model_storage_directory=os.path.join(os.path.expanduser('~'), '.EasyOCR')
+            model_storage_directory=str(model_dir),
+            download_enabled=False  # 禁用自动下载
         )
         
         print("EasyOCR初始化完成！")
