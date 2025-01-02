@@ -1,5 +1,6 @@
 # 使用 Python 3.9 作为基础镜像
 FROM python:3.9-slim
+# FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/python:3.9-slim
 
 # 设置工作目录
 WORKDIR /app
@@ -25,8 +26,8 @@ RUN mkdir -p models/EasyOCR
 # 复制本地模型文件（如果有）
 COPY models/EasyOCR /app/models/EasyOCR
 
-# 安装 Python 依赖
-RUN pip install --no-cache-dir -r requirements.txt
+# 安装依赖
+RUN pip install --no-cache-dir -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 # 如果没有本地模型，则下载
 RUN if [ ! -d "/app/models/EasyOCR" ]; then python download_models.py; fi
@@ -38,4 +39,4 @@ EXPOSE 8000
 ENV PYTHONUNBUFFERED=1
 
 # 启动命令
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"] 
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]  
