@@ -17,7 +17,7 @@ class OCRProcessor:
         print("正在初始化EasyOCR...")
         
         # 设置模型目录
-        model_dir = Path('./models/EasyOCR')
+        model_dir = Path('./models/EasyOCR/model')
         if not model_dir.exists():
             raise Exception("模型目录不存在，请先运行 download_models.py 下载模型文件")
         

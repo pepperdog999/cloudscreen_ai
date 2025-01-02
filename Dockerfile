@@ -21,16 +21,17 @@ COPY ocr.py .
 COPY download_models.py .
 
 # 创建模型目录
-RUN mkdir -p models/EasyOCR
 
 # 复制本地模型文件（如果有）
-COPY models/EasyOCR /app/models/EasyOCR
+# COPY models/EasyOCR /app/models/EasyOCR
 
 # 安装依赖
 RUN pip install --no-cache-dir -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 # 如果没有本地模型，则下载
-RUN if [ ! -d "/app/models/EasyOCR" ]; then python download_models.py; fi
+RUN mkdir -p models/EasyOCR
+
+RUN python download_models.py
 
 # 暴露端口
 EXPOSE 8000
